@@ -1,4 +1,3 @@
-import { promisify } from 'util';
 import copyToClipboard from 'copy-to-clipboard';
 import log from 'loglevel';
 import { clone } from 'lodash';
@@ -41,8 +40,7 @@ import txHelper from './helpers/utils/tx-helper';
 import { setBackgroundConnection } from './store/background-connection';
 import { getStartupTraceTags } from './helpers/utils/tags';
 
-// eslint-disable-next-line import/no-restricted-paths
-export { displayStateCorruptionError } from '../app/scripts/lib/state-corruption-errors';
+export { displayStateCorruptionError } from './helpers/utils/state-corruption-html';
 
 log.setLevel(global.METAMASK_DEBUG ? 'debug' : 'warn', false);
 
@@ -73,14 +71,12 @@ export default async function launchMetamaskUi(opts) {
 
   const metamaskState = await trace(
     { name: TraceName.GetState, parentContext: traceContext },
-    () => promisify(backgroundConnection.getState.bind(backgroundConnection))(),
+    backgroundConnection.getState.bind(backgroundConnection),
   );
 
   const store = await startApp(metamaskState, backgroundConnection, opts);
 
-  await promisify(
-    backgroundConnection.startPatches.bind(backgroundConnection),
-  )();
+  await backgroundConnection.startPatches();
 
   setupStateHooks(store);
 
