@@ -12,7 +12,11 @@ import type {
 } from './base-store';
 
 export type Backup = {
+  // TODO: Fix in https://github.com/MetaMask/metamask-extension/issues/31860
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   KeyringController?: unknown;
+  // TODO: Fix in https://github.com/MetaMask/metamask-extension/issues/31860
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   AppMetadataController?: unknown;
   meta?: MetaData;
 };
@@ -65,6 +69,8 @@ function makeBackup(state: MetaMaskStateType, meta: MetaData): Backup {
  */
 function hasVault(
   state?: MetaMaskStateType,
+  // TODO: Fix in https://github.com/MetaMask/metamask-extension/issues/31860
+  // eslint-disable-next-line @typescript-eslint/naming-convention
 ): state is { KeyringController: RuntimeObject & Record<'vault', unknown> } {
   const keyringController = state?.KeyringController;
   return (
@@ -156,6 +162,8 @@ export class PersistenceManager {
     this.#metadata = metadata;
   }
 
+  #pendingState: void | AbortController = undefined;
+
   /**
    * Sets the state in the local store.
    *
@@ -177,10 +185,24 @@ export class PersistenceManager {
       throw new Error('MetaMask - metadata must be set before calling "set"');
     }
 
+    const abortController = new AbortController();
+
+    // If we already have a write _pending_, abort it so the more up-to-date
+    // write can take its place. This is to prevent piling up multiple writes
+    // in the lock queue, which is pointless because we only care about the most
+    // recent write. This should rarely happen, as elsewhere we make use of
+    // `debounce` for all `set` requests in order to slow them to once per
+    // 1000ms; however, if the state is very large it *can* take more than the
+    // `debounce`'s `wait` time to write, resulting in a pile up right here.
+    // This prevents that pile up from happening.
+    this.#pendingState?.abort();
+    this.#pendingState = abortController;
+
     await navigator.locks.request(
       STATE_LOCK,
-      { mode: 'exclusive' },
+      { mode: 'exclusive', signal: abortController.signal },
       async () => {
+        this.#pendingState = undefined;
         try {
           // atomically set all the keys
           await this.#localStore.set({
